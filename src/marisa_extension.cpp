@@ -1,5 +1,3 @@
-#define DUCKDB_EXTENSION_MAIN
-
 #include "marisa_extension.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
@@ -27,6 +25,63 @@ inline void MarisaTrieLookupScalarFun(DataChunk &args, ExpressionState &state, V
 	                                                  });
 }
 
+// Common helper function to reduce code duplication
+template <typename SearchFunc>
+inline list_entry_t ExecuteMarisaTrieSearch(string_t trie_value, string_t value, int32_t max_results, Vector &result,
+                                            SearchFunc search_func) {
+
+	if (max_results < 0) {
+		throw InvalidInputException("max_results must be non-negative, got %d", max_results);
+	}
+
+	// Early return for zero max_results
+	if (max_results == 0) {
+		auto current_size = ListVector::GetListSize(result);
+		return list_entry_t {current_size, 0};
+	}
+
+	marisa::Trie trie;
+	trie.map(trie_value.GetData(), trie_value.GetSize());
+
+	marisa::Agent agent;
+	agent.set_query(value.GetData(), value.GetSize());
+
+	auto current_size = ListVector::GetListSize(result);
+
+	// Reserve space upfront to avoid multiple reallocations
+	std::vector<std::string> results;
+	results.reserve(max_results > 1000 ? 1000 : static_cast<size_t>(max_results)); // Cap initial reserve
+
+	// Collect results using the provided search function
+	size_t count = 0;
+	while (count < static_cast<size_t>(max_results) && search_func(trie, agent)) {
+		results.emplace_back(agent.key().str());
+		++count;
+	}
+
+	// Early return if no results found
+	if (results.empty()) {
+		return list_entry_t {current_size, 0};
+	}
+
+	auto new_size = current_size + results.size();
+	if (ListVector::GetListCapacity(result) < new_size) {
+		ListVector::Reserve(result, new_size);
+	}
+
+	auto &child_entry = ListVector::GetEntry(result);
+	auto child_vals = FlatVector::GetData<string_t>(child_entry);
+
+	// Use range-based loop with index for better readability
+	for (size_t i = 0; i < results.size(); ++i) {
+		child_vals[current_size + i] = StringVector::AddStringOrBlob(child_entry, results[i]);
+	}
+
+	ListVector::SetListSize(result, new_size);
+
+	return list_entry_t {current_size, results.size()};
+}
+
 inline void MarisaTrieCommonPrefixScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &trie_vector = args.data[0];
 	auto &value_vector = args.data[1];
@@ -35,36 +90,9 @@ inline void MarisaTrieCommonPrefixScalarFun(DataChunk &args, ExpressionState &st
 	TernaryExecutor::Execute<string_t, string_t, int32_t, list_entry_t>(
 	    trie_vector, value_vector, length_vector, result, args.size(),
 	    [&](string_t trie_value, string_t value, int32_t max_results) {
-		    marisa::Trie trie;
-		    trie.map(trie_value.GetData(), trie_value.GetSize());
-
-		    marisa::Agent agent;
-		    agent.set_query(value.GetData(), value.GetSize());
-
-		    auto current_size = ListVector::GetListSize(result);
-
-		    std::vector<string> results;
-		    size_t count = 0;
-		    while (count < max_results && trie.common_prefix_search(agent)) {
-			    results.push_back(string(agent.key().str()));
-			    count++;
-		    }
-
-		    auto new_size = current_size + results.size();
-		    if (ListVector::GetListCapacity(result) < new_size) {
-			    ListVector::Reserve(result, new_size);
-		    }
-
-		    auto &child_entry = ListVector::GetEntry(result);
-		    auto child_vals = FlatVector::GetData<string_t>(child_entry);
-
-		    for (size_t i = 0; i < results.size(); i++) {
-			    child_vals[current_size + i] = StringVector::AddStringOrBlob(child_entry, results[i]);
-		    }
-
-		    ListVector::SetListSize(result, new_size);
-
-		    return list_entry_t {current_size, results.size()};
+		    return ExecuteMarisaTrieSearch(
+		        trie_value, value, max_results, result,
+		        [](marisa::Trie &trie, marisa::Agent &agent) { return trie.common_prefix_search(agent); });
 	    });
 }
 
@@ -76,36 +104,9 @@ inline void MarisaTriePredictiveSearchScalarFun(DataChunk &args, ExpressionState
 	TernaryExecutor::Execute<string_t, string_t, int32_t, list_entry_t>(
 	    trie_vector, value_vector, length_vector, result, args.size(),
 	    [&](string_t trie_value, string_t value, int32_t max_results) {
-		    marisa::Trie trie;
-		    trie.map(trie_value.GetData(), trie_value.GetSize());
-
-		    marisa::Agent agent;
-		    agent.set_query(value.GetData(), value.GetSize());
-
-		    auto current_size = ListVector::GetListSize(result);
-
-		    std::vector<string> results;
-		    size_t count = 0;
-		    while (count < max_results && trie.predictive_search(agent)) {
-			    results.push_back(string(agent.key().str()));
-			    count++;
-		    }
-
-		    auto new_size = current_size + results.size();
-		    if (ListVector::GetListCapacity(result) < new_size) {
-			    ListVector::Reserve(result, new_size);
-		    }
-
-		    auto &child_entry = ListVector::GetEntry(result);
-		    auto child_vals = FlatVector::GetData<string_t>(child_entry);
-
-		    for (size_t i = 0; i < results.size(); i++) {
-			    child_vals[current_size + i] = StringVector::AddStringOrBlob(child_entry, results[i]);
-		    }
-
-		    ListVector::SetListSize(result, new_size);
-
-		    return list_entry_t {current_size, results.size()};
+		    return ExecuteMarisaTrieSearch(
+		        trie_value, value, max_results, result,
+		        [](marisa::Trie &trie, marisa::Agent &agent) { return trie.predictive_search(agent); });
 	    });
 }
 
@@ -127,6 +128,7 @@ struct MarisaTrieState {
 
 	MarisaTrieState() {
 		entries = make_uniq<std::vector<string>>();
+		entries->reserve(STANDARD_VECTOR_SIZE); // Reserve space to avoid reallocations
 	}
 };
 
@@ -169,17 +171,20 @@ struct MarisaTrieCreateOperation {
 
 	template <class STATE, class OP>
 	static void Combine(const STATE &source, STATE &target, AggregateInputData &aggr_input_data) {
+		// Early return if source is empty
+		if (!source.entries || source.entries->empty()) {
+			return;
+		}
+
+		// Initialize target if needed
 		if (!target.entries) {
-			target.entries = make_uniq<std::vector<string>>();
+			target.entries = make_uniq<std::vector<std::string>>();
 		}
 
-		// merge the two vectors
-
-		if (!source.entries) {
-			return; // nothing to merge
-		}
+		// Reserve space and merge efficiently
 		target.entries->reserve(target.entries->size() + source.entries->size());
-		target.entries->insert(target.entries->end(), source.entries->begin(), source.entries->end());
+		target.entries->insert(target.entries->end(), std::make_move_iterator(source.entries->begin()),
+		                       std::make_move_iterator(source.entries->end()));
 	}
 
 	template <class T, class STATE>
@@ -190,7 +195,7 @@ struct MarisaTrieCreateOperation {
 
 			marisa::Keyset keyset;
 			for (const auto &entry : *state.entries) {
-				keyset.push_back(entry);
+				keyset.push_back(std::string_view(entry));
 			}
 			marisa::Trie trie;
 			trie.build(keyset);
@@ -278,7 +283,3 @@ DUCKDB_EXTENSION_API const char *marisa_version() {
 	return duckdb::DuckDB::LibraryVersion();
 }
 }
-
-#ifndef DUCKDB_EXTENSION_MAIN
-#error DUCKDB_EXTENSION_MAIN not defined
-#endif
