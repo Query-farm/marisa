@@ -32,6 +32,14 @@ INSERT INTO employees VALUES('Alice'), ('Bob'), ('Charlie'), ('David'), ('Eve'),
 
 -- Create a trie from the employee names
 CREATE TABLE employees_trie AS SELECT marisa_trie(name) AS trie FROM employees;
+
+SELECT trie, octet_length(trie) FROM employees_trie;
+┌─────────────────────────────────────────────────────────────────┬────────────────────┐
+│                              trie                               │ octet_length(trie) │
+│                              blob                               │       int64        │
+├─────────────────────────────────────────────────────────────────┼────────────────────┤
+│ We love Marisa.\x00\x08\x00\x00\x00\x00\x00\x00\x00\xFD\x1B`\…  │        4160        │
+└─────────────────────────────────────────────────────────────────┴────────────────────┘
 ```
 
 ### Lookup Function
@@ -39,9 +47,21 @@ Check if a string exists in the trie using `marisa_lookup()`:
 ```sql
 -- Check if 'Alice' exists in the trie (returns true)
 SELECT marisa_lookup(trie, 'Alice') FROM employees_trie;
+┌──────────────────────────────┐
+│ marisa_lookup(trie, 'Alice') │
+│           boolean            │
+├──────────────────────────────┤
+│ true                         │
+└──────────────────────────────┘
 
 -- Check if 'Unknown' exists in the trie (returns false)
 SELECT marisa_lookup(trie, 'Unknown') FROM employees_trie;
+┌────────────────────────────────┐
+│ marisa_lookup(trie, 'Unknown') │
+│            boolean             │
+├────────────────────────────────┤
+│ false                          │
+└────────────────────────────────┘
 ```
 
 ### Common Prefix Search
@@ -53,6 +73,12 @@ CREATE TABLE countries_trie AS SELECT marisa_trie(name) AS trie FROM countries;
 
 -- Find all prefixes of 'USA' (returns ['U', 'US', 'USA'])
 SELECT marisa_common_prefix(trie, 'USA', 10) FROM countries_trie;
+┌───────────────────────────────────────┐
+│ marisa_common_prefix(trie, 'USA', 10) │
+│               varchar[]               │
+├───────────────────────────────────────┤
+│ [U, US, USA]                          │
+└───────────────────────────────────────┘
 ```
 
 ### Predictive Search
@@ -60,6 +86,12 @@ Find all strings in the trie that start with a given prefix using `marisa_predic
 ```sql
 -- Find all names starting with 'Me' (returns ['Megan', 'Melissa'])
 SELECT marisa_predictive(trie, 'Me', 10) FROM employees_trie;
+┌───────────────────────────────────┐
+│ marisa_predictive(trie, 'Me', 10) │
+│             varchar[]             │
+├───────────────────────────────────┤
+│ [Megan, Melissa]                  │
+└───────────────────────────────────┘
 ```
 
 ## Function Reference
