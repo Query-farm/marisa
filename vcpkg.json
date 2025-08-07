@@ -1,6 +1,6 @@
 {
         "dependencies": [
-                "openssl"
+                "marisa-trie"
         ],
         "vcpkg-configuration": {
                 "overlay-ports": [

@@ -1,0 +1,38 @@
+# name: test/sql/marisa.test
+# description: test marisa extension
+# group: [sql]
+
+# Require statement will ensure this test is run with this extension loaded
+require marisa
+
+statement ok
+create table employees(name text);
+
+statement ok
+insert into employees values('Alice'), ('Bob'), ('Charlie'), ('David'), ('Eve'), ('Frank'), ('Mallory'), ('Megan'), ('Oscar'), ('Melissa');
+
+statement ok
+create table employees_trie as select marisa_trie(name) as trie from employees;
+
+statement ok
+create table countries(name text);
+
+statement ok
+insert into countries values ('U'), ('US'), ('USA');
+
+statement ok
+create table countries_trie as select marisa_trie(name) as trie from countries;
+
+query I
+select name, from employees, employees_trie where marisa_lookup(trie, name) = false
+----
+
+query T
+select marisa_common_prefix(trie, 'USA', 10) from countries_trie
+----
+[U, US, USA]
+
+query T
+select marisa_predictive(trie, 'Me', 10) from employees_trie;
+----
+[Megan, Melissa]
