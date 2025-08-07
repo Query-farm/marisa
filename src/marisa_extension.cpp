@@ -27,53 +27,6 @@ inline void MarisaTrieLookupScalarFun(DataChunk &args, ExpressionState &state, V
 	                                                  });
 }
 
-// static void RepeatListFunction(DataChunk &args, ExpressionState &, Vector &result) {
-// 	auto &list_vector = args.data[0];
-// 	auto &cnt_vector = args.data[1];
-
-// 	auto &source_child = ListVector::GetEntry(list_vector);
-// 	auto &result_child = ListVector::GetEntry(result);
-
-// 	idx_t current_size = ListVector::GetListSize(result);
-// 	BinaryExecutor::Execute<list_entry_t, int64_t, list_entry_t>(
-// 	    list_vector, cnt_vector, result, args.size(), [&](list_entry_t list_input, int64_t cnt) {
-// 		    idx_t copy_count = cnt <= 0 || list_input.length == 0 ? 0 : UnsafeNumericCast<idx_t>(cnt);
-// 		    idx_t result_length = list_input.length * copy_count;
-// 		    idx_t new_size = current_size + result_length;
-// 		    ListVector::Reserve(result, new_size);
-// 		    list_entry_t result_list;
-// 		    result_list.offset = current_size;
-// 		    result_list.length = result_length;
-// 		    for (idx_t i = 0; i < copy_count; i++) {
-// 			    // repeat the list contents "cnt" times
-// 			    VectorOperations::Copy(source_child, result_child, list_input.offset + list_input.length,
-// 			                           list_input.offset, current_size);
-// 			    current_size += list_input.length;
-// 		    }
-// 		    return result_list;
-// 	    });
-// 	ListVector::SetListSize(result, current_size);
-// }
-
-// auto current_size = ListVector::GetListSize(result);
-// auto new_size = current_size + vals.size();
-// if (ListVector::GetListCapacity(result) < new_size) {
-// 	ListVector::Reserve(result, new_size);
-// }
-
-// auto &child_entry = ListVector::GetEntry(result);
-// auto child_vals = FlatVector::GetData<T>(child_entry);
-// auto &child_validity = FlatVector::Validity(child_entry);
-// for (idx_t i = 0; i < vals.size(); i++) {
-// 	auto &val = vals[i];
-// 	D_ASSERT(val != nullptr); // Wildcard extract shouldn't give back nullptrs
-// 	child_vals[current_size + i] = fun(val, alc, result, child_validity, current_size + i);
-// }
-
-// ListVector::SetListSize(result, new_size);
-
-// return list_entry_t {current_size, vals.size()};
-
 inline void MarisaTrieCommonPrefixScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &trie_vector = args.data[0];
 	auto &value_vector = args.data[1];
@@ -201,6 +154,7 @@ struct MarisaTrieCreateOperation {
 	static void Operation(STATE &state, const A_TYPE &a_data, AggregateUnaryInput &idata) {
 		if (!state.entries) {
 			state.entries = make_uniq<std::vector<string>>();
+			state.entries->reserve(STANDARD_VECTOR_SIZE);
 		}
 		state.entries->push_back(a_data.GetString());
 	}
@@ -224,15 +178,13 @@ struct MarisaTrieCreateOperation {
 		if (!source.entries) {
 			return; // nothing to merge
 		}
-		for (const auto &entry : *source.entries) {
-			target.entries->push_back(entry);
-		}
+		target.entries->reserve(target.entries->size() + source.entries->size());
+		target.entries->insert(target.entries->end(), source.entries->begin(), source.entries->end());
 	}
 
 	template <class T, class STATE>
 	static void Finalize(STATE &state, T &target, AggregateFinalizeData &finalize_data) {
 		if (!state.entries || state.entries->empty()) {
-			printf("Marisa Trie is empty, returning NULL\n");
 			finalize_data.ReturnNull();
 		} else {
 
@@ -242,10 +194,8 @@ struct MarisaTrieCreateOperation {
 			}
 			marisa::Trie trie;
 			trie.build(keyset);
-
 			std::stringstream memstream(std::ios::in | std::ios::out | std::ios::binary);
 			memstream << trie;
-
 			target = StringVector::AddStringOrBlob(finalize_data.result, memstream.str());
 		}
 	}
