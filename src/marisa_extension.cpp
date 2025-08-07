@@ -3,7 +3,6 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
-#include "duckdb/main/extension_util.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_aggregate_function_info.hpp"
 #include <marisa.h>
@@ -222,23 +221,24 @@ auto static MarisaTrieCreateAggregate(const LogicalType &type, const LogicalType
 	    type, result_type);
 }
 
-static void LoadInternal(DatabaseInstance &instance) {
+static void LoadInternal(ExtensionLoader &loader) {
 	auto lookup_scalar_function = ScalarFunction("marisa_lookup", {LogicalType::BLOB, LogicalType::VARCHAR},
 	                                             LogicalType::BOOLEAN, MarisaTrieLookupScalarFun);
-	ExtensionUtil::RegisterFunction(instance, lookup_scalar_function);
+	loader.RegisterFunction(lookup_scalar_function);
 
 	auto common_prefix_scalar_function =
 	    ScalarFunction("marisa_common_prefix", {LogicalType::BLOB, LogicalType::VARCHAR, LogicalType::INTEGER},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTrieCommonPrefixScalarFun);
-	ExtensionUtil::RegisterFunction(instance, common_prefix_scalar_function);
+	loader.RegisterFunction(common_prefix_scalar_function);
 
 	auto predictive_search_scalar_function =
 	    ScalarFunction("marisa_predictive", {LogicalType::BLOB, LogicalType::VARCHAR, LogicalType::INTEGER},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTriePredictiveSearchScalarFun);
-	ExtensionUtil::RegisterFunction(instance, predictive_search_scalar_function);
+	loader.RegisterFunction(predictive_search_scalar_function);
 
-	auto &system_catalog = Catalog::GetSystemCatalog(instance);
-	auto data = CatalogTransaction::GetSystemTransaction(instance);
+	auto &db = loader.GetDatabaseInstance();
+	auto &system_catalog = Catalog::GetSystemCatalog(db);
+	auto data = CatalogTransaction::GetSystemTransaction(db);
 
 	AggregateFunctionSet marisa_trie_set("marisa_trie");
 
@@ -258,8 +258,8 @@ static void LoadInternal(DatabaseInstance &instance) {
 	system_catalog.CreateFunction(data, marisa_trie_create_info);
 }
 
-void MarisaExtension::Load(DuckDB &db) {
-	LoadInternal(*db.instance);
+void MarisaExtension::Load(ExtensionLoader &loader) {
+	LoadInternal(loader);
 }
 
 std::string MarisaExtension::Name() {
@@ -274,12 +274,7 @@ std::string MarisaExtension::Version() const {
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void marisa_init(duckdb::DatabaseInstance &db) {
-	duckdb::DuckDB db_wrapper(db);
-	db_wrapper.LoadExtension<duckdb::MarisaExtension>();
-}
-
-DUCKDB_EXTENSION_API const char *marisa_version() {
-	return duckdb::DuckDB::LibraryVersion();
+DUCKDB_CPP_EXTENSION_ENTRY(marisa, loader) {
+	duckdb::LoadInternal(loader);
 }
 }
