@@ -6,6 +6,7 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_aggregate_function_info.hpp"
 #include <marisa.h>
+#include "query_farm_telemetry.hpp"
 
 namespace duckdb {
 
@@ -256,6 +257,8 @@ static void LoadInternal(ExtensionLoader &loader) {
 	}
 
 	system_catalog.CreateFunction(data, marisa_trie_create_info);
+
+	QueryFarmSendTelemetry(loader, instance.shared_from_this(), "marisa", "2025092301");
 }
 
 void MarisaExtension::Load(ExtensionLoader &loader) {
@@ -267,7 +270,7 @@ std::string MarisaExtension::Name() {
 }
 
 std::string MarisaExtension::Version() const {
-	return "0.0.1";
+	return "2025092301";
 }
 
 } // namespace duckdb
