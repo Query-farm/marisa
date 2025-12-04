@@ -258,7 +258,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	system_catalog.CreateFunction(data, marisa_trie_create_info);
 
-	QueryFarmSendTelemetry(loader, "marisa", MarisaExtension::Version());
+	QueryFarmSendTelemetry(loader, "marisa", "2025120401");
 }
 
 void MarisaExtension::Load(ExtensionLoader &loader) {
