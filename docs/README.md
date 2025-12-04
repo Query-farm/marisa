@@ -152,3 +152,4 @@ SELECT marisa_common_prefix(trie, 'USA', 10) FROM countries_trie;
 SELECT marisa_predictive(trie, 'Me', 10) FROM employees_trie;
 -- Returns: ['Megan', 'Melissa']
 ```
+
