@@ -260,7 +260,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	loader.RegisterFunction(marisa_trie_create_info);
 
-	QueryFarmSendTelemetry(loader, "marisa", "2026072501");
+	QueryFarmSendTelemetry(loader, "marisa", "2026102001");
 }
 
 void MarisaExtension::Load(ExtensionLoader &loader) {
@@ -272,7 +272,7 @@ std::string MarisaExtension::Name() {
 }
 
 std::string MarisaExtension::Version() const {
-	return "2026072501";
+	return "2026102001";
 }
 
 } // namespace duckdb
