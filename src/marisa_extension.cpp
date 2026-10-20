@@ -5,6 +5,9 @@
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_aggregate_function_info.hpp"
+#include "duckdb/common/vector/flat_vector.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/string_vector.hpp"
 #include <marisa.h>
 #include "query_farm_telemetry.hpp"
 
@@ -14,7 +17,7 @@ inline void MarisaTrieLookupScalarFun(DataChunk &args, ExpressionState &state, V
 	auto &trie_vector = args.data[0];
 	auto &value_vector = args.data[1];
 
-	BinaryExecutor::Execute<string_t, string_t, bool>(trie_vector, value_vector, result, args.size(),
+	BinaryExecutor::Execute<string_t, string_t, bool>(trie_vector, value_vector, result,
 	                                                  [&](string_t trie_value, string_t value) {
 		                                                  marisa::Trie trie;
 		                                                  trie.map(trie_value.GetData(), trie_value.GetSize());
@@ -37,7 +40,7 @@ inline list_entry_t ExecuteMarisaTrieSearch(string_t trie_value, string_t value,
 	// Early return for zero max_results
 	if (max_results == 0) {
 		auto current_size = ListVector::GetListSize(result);
-		return list_entry_t {current_size, 0};
+		return list_entry_t(current_size, 0);
 	}
 
 	marisa::Trie trie;
@@ -61,7 +64,7 @@ inline list_entry_t ExecuteMarisaTrieSearch(string_t trie_value, string_t value,
 
 	// Early return if no results found
 	if (results.empty()) {
-		return list_entry_t {current_size, 0};
+		return list_entry_t(current_size, 0);
 	}
 
 	auto new_size = current_size + results.size();
@@ -69,8 +72,8 @@ inline list_entry_t ExecuteMarisaTrieSearch(string_t trie_value, string_t value,
 		ListVector::Reserve(result, new_size);
 	}
 
-	auto &child_entry = ListVector::GetEntry(result);
-	auto child_vals = FlatVector::GetData<string_t>(child_entry);
+	auto &child_entry = ListVector::GetChildMutable(result);
+	auto child_vals = FlatVector::GetDataMutable<string_t>(child_entry);
 
 	// Use range-based loop with index for better readability
 	for (size_t i = 0; i < results.size(); ++i) {
@@ -79,7 +82,7 @@ inline list_entry_t ExecuteMarisaTrieSearch(string_t trie_value, string_t value,
 
 	ListVector::SetListSize(result, new_size);
 
-	return list_entry_t {current_size, results.size()};
+	return list_entry_t(current_size, results.size());
 }
 
 inline void MarisaTrieCommonPrefixScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -88,7 +91,7 @@ inline void MarisaTrieCommonPrefixScalarFun(DataChunk &args, ExpressionState &st
 	auto &length_vector = args.data[2];
 
 	TernaryExecutor::Execute<string_t, string_t, int32_t, list_entry_t>(
-	    trie_vector, value_vector, length_vector, result, args.size(),
+	    trie_vector, value_vector, length_vector, result,
 	    [&](string_t trie_value, string_t value, int32_t max_results) {
 		    return ExecuteMarisaTrieSearch(
 		        trie_value, value, max_results, result,
@@ -102,7 +105,7 @@ inline void MarisaTriePredictiveSearchScalarFun(DataChunk &args, ExpressionState
 	auto &length_vector = args.data[2];
 
 	TernaryExecutor::Execute<string_t, string_t, int32_t, list_entry_t>(
-	    trie_vector, value_vector, length_vector, result, args.size(),
+	    trie_vector, value_vector, length_vector, result,
 	    [&](string_t trie_value, string_t value, int32_t max_results) {
 		    return ExecuteMarisaTrieSearch(
 		        trie_value, value, max_results, result,
@@ -206,8 +209,8 @@ struct MarisaTrieCreateOperation {
 	}
 };
 
-unique_ptr<FunctionData> MarisaTrieBind(ClientContext &context, AggregateFunction &function,
-                                        vector<unique_ptr<Expression>> &arguments) {
+unique_ptr<FunctionData> MarisaTrieBind(BindAggregateFunctionInput &input) {
+	auto &arguments = input.GetArguments();
 
 	if (arguments.size() != 1) {
 		throw BinderException("Marisa Trie aggregate function requires one argument");
@@ -217,7 +220,7 @@ unique_ptr<FunctionData> MarisaTrieBind(ClientContext &context, AggregateFunctio
 
 template <typename T>
 auto static MarisaTrieCreateAggregate(const LogicalType &type, const LogicalType &result_type) -> AggregateFunction {
-	return AggregateFunction::UnaryAggregateDestructor<
+	return AggregateFunction::UnaryAggregate<
 	    MarisaTrieState, T, string_t, MarisaTrieCreateOperation<MarisaTrieBindData>, AggregateDestructorType::LEGACY>(
 	    type, result_type);
 }
@@ -225,26 +228,25 @@ auto static MarisaTrieCreateAggregate(const LogicalType &type, const LogicalType
 static void LoadInternal(ExtensionLoader &loader) {
 	auto lookup_scalar_function = ScalarFunction("marisa_lookup", {LogicalType::BLOB, LogicalType::VARCHAR},
 	                                             LogicalType::BOOLEAN, MarisaTrieLookupScalarFun);
+	lookup_scalar_function.SetFallible();
 	loader.RegisterFunction(lookup_scalar_function);
 
 	auto common_prefix_scalar_function =
 	    ScalarFunction("marisa_common_prefix", {LogicalType::BLOB, LogicalType::VARCHAR, LogicalType::INTEGER},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTrieCommonPrefixScalarFun);
+	common_prefix_scalar_function.SetFallible();
 	loader.RegisterFunction(common_prefix_scalar_function);
 
 	auto predictive_search_scalar_function =
 	    ScalarFunction("marisa_predictive", {LogicalType::BLOB, LogicalType::VARCHAR, LogicalType::INTEGER},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTriePredictiveSearchScalarFun);
+	predictive_search_scalar_function.SetFallible();
 	loader.RegisterFunction(predictive_search_scalar_function);
-
-	auto &db = loader.GetDatabaseInstance();
-	auto &system_catalog = Catalog::GetSystemCatalog(db);
-	auto data = CatalogTransaction::GetSystemTransaction(db);
 
 	AggregateFunctionSet marisa_trie_set("marisa_trie");
 
 	auto fun = MarisaTrieCreateAggregate<string_t>(LogicalType::VARCHAR, LogicalType::BLOB);
-	fun.bind = MarisaTrieBind;
+	fun.SetBindCallback(MarisaTrieBind);
 	marisa_trie_set.AddFunction(fun);
 
 	CreateAggregateFunctionInfo marisa_trie_create_info(marisa_trie_set);
@@ -256,7 +258,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 		marisa_trie_create_info.descriptions.push_back(desc);
 	}
 
-	system_catalog.CreateFunction(data, marisa_trie_create_info);
+	loader.RegisterFunction(marisa_trie_create_info);
 
 	QueryFarmSendTelemetry(loader, "marisa", "2026072501");
 }
