@@ -1,0 +1,41 @@
+# name: test/sql/marisa_parameter_names.test
+# description: every function parameter is reported with a real name, not col0, col1, ...
+# group: [sql]
+
+require marisa
+
+query IIT
+SELECT function_name, function_type, parameters FROM duckdb_functions()
+WHERE extension_name = 'marisa'
+ORDER BY function_name, function_type, len(parameters), parameter_types::VARCHAR;
+----
+marisa_common_prefix	scalar	[trie, search, max_results]
+marisa_lookup	scalar	[trie, search]
+marisa_predictive	scalar	[trie, prefix, max_results]
+marisa_trie	aggregate	[value]
+
+# No parameter may fall back to a positional colN name
+query I
+SELECT count(*) FROM (SELECT unnest(parameters) AS p FROM duckdb_functions() WHERE extension_name = 'marisa')
+WHERE regexp_matches(p, '^col[0-9]+$');
+----
+0
+
+# Positional calls work as before
+statement ok
+CREATE TABLE countries_trie AS SELECT marisa_trie(name) AS trie FROM (VALUES ('U'), ('US'), ('USA')) t(name);
+
+query T
+SELECT marisa_lookup(trie, 'US') FROM countries_trie;
+----
+true
+
+query T
+SELECT marisa_common_prefix(trie, 'USA', 10) FROM countries_trie;
+----
+[U, US, USA]
+
+query T
+SELECT marisa_predictive(trie, 'US', 10) FROM countries_trie;
+----
+[US, USA]

@@ -13,6 +13,11 @@
 
 namespace duckdb {
 
+//! A positional-only parameter with a real name (bare types would be reported as col0, col1, ...)
+static FunctionParameter Positional(const char *name, LogicalType type) {
+	return FunctionParameter(name, std::move(type), {}, FunctionParameterKind::POSITIONAL_ONLY);
+}
+
 inline void MarisaTrieLookupScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &trie_vector = args.data[0];
 	auto &value_vector = args.data[1];
@@ -226,19 +231,25 @@ auto static MarisaTrieCreateAggregate(const LogicalType &type, const LogicalType
 }
 
 static void LoadInternal(ExtensionLoader &loader) {
-	auto lookup_scalar_function = ScalarFunction("marisa_lookup", {LogicalType::BLOB, LogicalType::VARCHAR},
-	                                             LogicalType::BOOLEAN, MarisaTrieLookupScalarFun);
+	auto lookup_scalar_function =
+	    ScalarFunction("marisa_lookup",
+	                   {Positional("trie", LogicalType::BLOB), Positional("search", LogicalType::VARCHAR)},
+	                   LogicalType::BOOLEAN, MarisaTrieLookupScalarFun);
 	lookup_scalar_function.SetFallible();
 	loader.RegisterFunction(lookup_scalar_function);
 
 	auto common_prefix_scalar_function =
-	    ScalarFunction("marisa_common_prefix", {LogicalType::BLOB, LogicalType::VARCHAR, LogicalType::INTEGER},
+	    ScalarFunction("marisa_common_prefix",
+	                   {Positional("trie", LogicalType::BLOB), Positional("search", LogicalType::VARCHAR),
+	                    Positional("max_results", LogicalType::INTEGER)},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTrieCommonPrefixScalarFun);
 	common_prefix_scalar_function.SetFallible();
 	loader.RegisterFunction(common_prefix_scalar_function);
 
 	auto predictive_search_scalar_function =
-	    ScalarFunction("marisa_predictive", {LogicalType::BLOB, LogicalType::VARCHAR, LogicalType::INTEGER},
+	    ScalarFunction("marisa_predictive",
+	                   {Positional("trie", LogicalType::BLOB), Positional("prefix", LogicalType::VARCHAR),
+	                    Positional("max_results", LogicalType::INTEGER)},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTriePredictiveSearchScalarFun);
 	predictive_search_scalar_function.SetFallible();
 	loader.RegisterFunction(predictive_search_scalar_function);
@@ -247,6 +258,8 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	auto fun = MarisaTrieCreateAggregate<string_t>(LogicalType::VARCHAR, LogicalType::BLOB);
 	fun.SetBindCallback(MarisaTrieBind);
+	// Name the (positional-only) argument, otherwise it is reported as col0
+	fun.GetSignature().GetParameter(0).SetName("value");
 	marisa_trie_set.AddFunction(fun);
 
 	CreateAggregateFunctionInfo marisa_trie_create_info(marisa_trie_set);
@@ -260,7 +273,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	loader.RegisterFunction(marisa_trie_create_info);
 
-	QueryFarmSendTelemetry(loader, "marisa", "2026102001");
+	QueryFarmSendTelemetry(loader, "marisa", "2026102101");
 }
 
 void MarisaExtension::Load(ExtensionLoader &loader) {
@@ -272,7 +285,7 @@ std::string MarisaExtension::Name() {
 }
 
 std::string MarisaExtension::Version() const {
-	return "2026102001";
+	return "2026102101";
 }
 
 } // namespace duckdb
