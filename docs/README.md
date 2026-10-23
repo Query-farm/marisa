@@ -7,22 +7,15 @@
   </a>
 </p>
 
-# DuckDB Marisa Extension by [Query.Farm](https://query.farm)
+# Marisa Extension for DuckDB
 
-[![DuckDB](https://img.shields.io/badge/DuckDB-community_extension-fdf1e0?logo=duckdb&logoColor=fff000)](https://duckdb.org/community_extensions/extensions/marisa.html)
-[![v1.5 build](https://github.com/Query-farm/marisa/actions/workflows/MainDistributionPipeline.yml/badge.svg?branch=v1.5)](https://github.com/Query-farm/marisa/actions/workflows/MainDistributionPipeline.yml?query=branch%3Av1.5)
+[![DuckDB](https://img.shields.io/badge/DuckDB-extension-fdf1e0?logo=duckdb&logoColor=fff000)](https://query.farm/products/extensions/marisa/)
+[![v2.0 build](https://github.com/Query-farm/marisa/actions/workflows/MainDistributionPipeline.yml/badge.svg?branch=v2.0)](https://github.com/Query-farm/marisa/actions/workflows/MainDistributionPipeline.yml?query=branch%3Av2.0)
 
-The **Marisa** extension, developed by **[Query.Farm](https://query.farm)**, adds [MARISA](https://github.com/s-yata/marisa-trie) (Matching Algorithm with Recursively Implemented StorAge) trie functionality for DuckDB. [MARISA](https://github.com/s-yata/marisa-trie) is a static and space-efficient trie data structure that enables fast string lookups, prefix searches, and predictive text operations.
+Build compact string indexes and perform prefix searches in DuckDB using MARISA tries.
 
 ## Documentation
 
 Full documentation, including installation, usage, the function reference, and cookbook examples, is available at:
 
-**[https://query.farm/products/extensions/marisa](https://query.farm/products/extensions/marisa)**
-
-## Installation
-
-```sql
-INSTALL marisa FROM community;
-LOAD marisa;
-```
+**[https://query.farm/products/extensions/marisa/](https://query.farm/products/extensions/marisa/)**
