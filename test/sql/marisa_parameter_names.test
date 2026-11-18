@@ -39,3 +39,26 @@ query T
 SELECT marisa_predictive(trie, 'US', 10) FROM countries_trie;
 ----
 [US, USA]
+
+# Every function reports a description and at least one example
+query I
+SELECT count(*) FROM duckdb_functions()
+WHERE extension_name = 'marisa' AND (description IS NULL OR description = '' OR len(examples) = 0);
+----
+0
+
+# The documented examples return what their comments claim
+query T
+SELECT marisa_lookup(marisa_trie(w), 'apple') FROM (VALUES ('apple'), ('banana')) t(w);
+----
+true
+
+query T
+SELECT marisa_common_prefix(marisa_trie(w), 'applesauce', 10) FROM (VALUES ('a'), ('app'), ('apple'), ('banana')) t(w);
+----
+[a, app, apple]
+
+query T
+SELECT marisa_predictive(marisa_trie(w), 'app', 10) FROM (VALUES ('apple'), ('apply'), ('banana')) t(w);
+----
+[apple, apply]

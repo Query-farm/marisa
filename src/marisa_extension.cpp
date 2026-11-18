@@ -13,6 +13,20 @@
 
 namespace duckdb {
 
+//! Register a scalar function with a description and a runnable example in duckdb_functions()
+static void RegisterDocumented(ExtensionLoader &loader, ScalarFunction function, const string &description,
+                               const string &example) {
+	CreateScalarFunctionInfo info(std::move(function));
+	FunctionDescription desc;
+	desc.description = description;
+	desc.examples.push_back(example);
+	desc.categories.push_back("marisa");
+	desc.categories.push_back("string");
+	info.descriptions.push_back(std::move(desc));
+	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+	loader.RegisterFunction(std::move(info));
+}
+
 //! A positional-only parameter with a real name (bare types would be reported as col0, col1, ...)
 static FunctionParameter Positional(const char *name, LogicalType type) {
 	return FunctionParameter(name, std::move(type), {}, FunctionParameterKind::POSITIONAL_ONLY);
@@ -236,7 +250,10 @@ static void LoadInternal(ExtensionLoader &loader) {
 	                   {Positional("trie", LogicalType::BLOB), Positional("search", LogicalType::VARCHAR)},
 	                   LogicalType::BOOLEAN, MarisaTrieLookupScalarFun);
 	lookup_scalar_function.SetFallible();
-	loader.RegisterFunction(lookup_scalar_function);
+	RegisterDocumented(loader, std::move(lookup_scalar_function),
+	                   "Returns true if search is a key stored in the trie, false otherwise.",
+	                   "SELECT marisa_lookup(marisa_trie(w), 'apple') FROM (VALUES ('apple'), ('banana')) t(w); "
+	                   "-- true");
 
 	auto common_prefix_scalar_function =
 	    ScalarFunction("marisa_common_prefix",
@@ -244,7 +261,10 @@ static void LoadInternal(ExtensionLoader &loader) {
 	                    Positional("max_results", LogicalType::INTEGER)},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTrieCommonPrefixScalarFun);
 	common_prefix_scalar_function.SetFallible();
-	loader.RegisterFunction(common_prefix_scalar_function);
+	RegisterDocumented(loader, std::move(common_prefix_scalar_function),
+	                   "Returns up to max_results keys stored in the trie that are prefixes of search, shortest first.",
+	                   "SELECT marisa_common_prefix(marisa_trie(w), 'applesauce', 10) "
+	                   "FROM (VALUES ('a'), ('app'), ('apple'), ('banana')) t(w); -- [a, app, apple]");
 
 	auto predictive_search_scalar_function =
 	    ScalarFunction("marisa_predictive",
@@ -252,7 +272,10 @@ static void LoadInternal(ExtensionLoader &loader) {
 	                    Positional("max_results", LogicalType::INTEGER)},
 	                   LogicalType::LIST(LogicalType::VARCHAR), MarisaTriePredictiveSearchScalarFun);
 	predictive_search_scalar_function.SetFallible();
-	loader.RegisterFunction(predictive_search_scalar_function);
+	RegisterDocumented(loader, std::move(predictive_search_scalar_function),
+	                   "Returns up to max_results keys stored in the trie that start with prefix.",
+	                   "SELECT marisa_predictive(marisa_trie(w), 'app', 10) "
+	                   "FROM (VALUES ('apple'), ('apply'), ('banana')) t(w); -- [apple, apply]");
 
 	AggregateFunctionSet marisa_trie_set("marisa_trie");
 
@@ -266,14 +289,18 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	{
 		FunctionDescription desc;
-		desc.description = "Creates a new Marisa Trie from the value supplied.";
-		desc.examples.push_back("SELECT marisa_trie(column) FROM table");
+		desc.description = "Aggregates VARCHAR values into a compact MARISA trie, returned as a BLOB for use with "
+		                   "marisa_lookup, marisa_common_prefix and marisa_predictive.";
+		desc.examples.push_back("SELECT marisa_lookup(marisa_trie(w), 'apple') FROM (VALUES ('apple'), ('banana')) t(w); "
+		                        "-- true");
+		desc.categories.push_back("marisa");
+		desc.categories.push_back("aggregate");
 		marisa_trie_create_info.descriptions.push_back(desc);
 	}
 
 	loader.RegisterFunction(marisa_trie_create_info);
 
-	QueryFarmSendTelemetry(loader, "marisa", "2026102101");
+	QueryFarmSendTelemetry(loader, "marisa", "2026111701");
 }
 
 void MarisaExtension::Load(ExtensionLoader &loader) {
@@ -285,7 +312,7 @@ std::string MarisaExtension::Name() {
 }
 
 std::string MarisaExtension::Version() const {
-	return "2026102101";
+	return "2026111701";
 }
 
 } // namespace duckdb
